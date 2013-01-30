@@ -322,12 +322,26 @@ let cnd_set_tests =
       Ret
     ])]);
 
-  ("csi_call", csi_test [(mk_block "main" [
+  (*("csi_call", csi_test [(mk_block "main" [
       Call (Lbl (mk_lbl_named "out"));
 			    Ret;
     ]); (mk_block "out" [
       Ret
+    ])]);*)
+		
+	
+		
+		("csi_call", csi_test [(mk_block "main" [
+      	Call (Lbl (mk_lbl_named "out"));
+				Or (eax, Imm 0xF0F0F0F0l);
+				Or (eax, Imm 0xF0F0F0F0l);
+			    Ret;
+    ]); (mk_block "out" [
+      Mov (eax, Imm 0x0F0F0F0Fl);
+      And (eax, Imm 0xF0F0F0F0l);
+			Ret
     ])]);
+		
 
   ("csi_ret", csi_test [(mk_block "main" [
       Ret

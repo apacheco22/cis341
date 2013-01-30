@@ -3,6 +3,7 @@
 
 open X86
 
+
 (* Int32 / Int64 abbreviations and infix arithmetic *)
 let (+@) = Int32.add
 let (-@) = Int32.sub
@@ -102,12 +103,117 @@ let get_bit bitidx n =
   let shb = Int32.shift_left 1l bitidx in
   Int32.logand shb n = shb  
 
+let get_imm (imm: opnd) : int32 =
+	begin match imm with
+	| Imm x -> x
+	| _ -> raise (X86_segmentation_fault "Invalid immediate operand")
+	end	
+	
+let find_insn (label: lbl) (code: insn_block list) : int =
+	let count = ref 0 in
+	let rec loop (tail: insn_block list) : int = 
+		begin match tail with
+		| [] -> raise (X86_segmentation_fault "Label not found")
+		| h::tl -> if h.label = label then !count else (count := !count + 1; loop tl)
+		end
+	in loop code
+	
+let get_reg_value (r: reg) (s_reg: int32 array) : int32 = 
+	Array.get s_reg (get_register_id r)
+	
+let calc_addr (ia: ind) (regs: int32 array) : int32 =
+	let base = 
+		match (ia.i_base) with
+		| (Some x) -> Int32.of_int(get_register_id x)
+		| _ -> 0l
+		in
+			let iscl =
+				match (ia.i_iscl) with
+				| Some (r,scl) -> (get_reg_value r regs) *@ scl
+				| _ -> 0l
+				in
+					let disp = 
+						match (ia.i_disp) with
+						| Some(DLbl l) -> raise (X86_segmentation_fault "Cannot jump to indirect label")
+						| Some(DImm x) -> x
+						| _ -> 0l
+						in
+						base +@ iscl +@ disp
+		
+let parse_operand (code: insn_block list) (xs: x86_state) (op: opnd) : int32 =
+	begin match op with
+	| Imm x -> get_imm op
+	| Lbl l -> Int32.of_int (find_insn l code)
+	| Reg r -> get_reg_value r xs.s_reg
+	| Ind i -> calc_addr i xs.s_reg
+	end
 
+let operand_label (op: opnd) : lbl = 
+	begin match op with
+		| Lbl l -> l
+		| _ -> raise (X86_segmentation_fault "Invalid label operand")
+	end
 
-let interpret (code:insn_block list) (xs:x86_state) (l:lbl) : unit =
-failwith "unimplemented"
+let push (o: opnd) : unit =
+	print_endline "push"
 
-      
+let parse_insn (i: insn) : unit = 
+	begin match i with
+	| Neg d -> print_endline "neg"
+	| Add (dest, src) -> print_endline "add"
+	| Sub (dest, src) -> print_endline "sub"
+	| Imul (rg, src) -> print_endline "imul"
+	| Not dest -> print_endline "not"
+	| And (dest, src)-> print_endline "and"
+	| Or (dest, src) -> print_endline "or"
+	| Xor (dest, src) -> print_endline "xor"
+	| Sar (dest, amt) -> print_endline "sar"
+	| Shl (dest, amt) -> print_endline "shl"
+	| Shr (dest, amt) -> print_endline "shr"
+	| Setb (dest, cc) -> print_endline "setb"
+	| Lea (dest, ind) -> print_endline "lea"
+	| Mov (dest, src) -> print_endline "move"
+	| Push src -> push src
+	| Pop dest -> print_endline "pop"
+	| Cmp (src1, src2) -> print_endline "cmp"
+	| Jmp src -> print_endline "jmp"
+	| J (cc, clbl) -> print_endline "j"
+	| _ -> raise (X86_segmentation_fault "invalid insn")
+	end
+		
+let rec interpret (code: insn_block list) (xs: x86_state) (l: lbl) : unit =
+	let rec 
+		get_program (rl: int Stack.t) (rb: int Stack.t) (code: insn_block list) (xs: x86_state) (l:lbl) : unit =		
+			let index : int  = (find_insn l code) in
+				Stack.push 0 rl;
+				Stack.push index rb;
+				let program = List.nth code index in				
+					run_block rl rb program.insns code xs
+	and
+		run_block (rl: int Stack.t) (rb: int Stack.t) (prgm: insn list) (code: insn_block list) (xs: x86_state) : unit =	
+			let line = ref (Stack.pop rl) in 
+				let rec loop (prgm: insn list) : unit = 
+					begin match prgm with
+						| h::tl -> begin match h with
+							| Call s -> print_endline "***CALL***";
+												line := !line + 1;
+												let src = operand_label s in 
+												push (Imm 0l); 
+												Stack.push (!line) rl;
+												get_program rl rb code xs src 
+				 			| Ret -> print_endline "ret!"; 
+												let _ = Stack.pop rb in
+													if (Stack.is_empty) rb then () else
+													let rblock = (Stack.pop rb) in
+														run_block rl rb (List.nth code rblock).insns code xs									
+							| _ ->	parse_insn h; line := !line + 1; loop tl 
+						end
+					| [] -> raise (X86_segmentation_fault "Program finished without return statement")		
+				end 
+		in loop prgm
+	in let rl = Stack.create () in let rb = Stack.create () in
+	get_program rl rb code xs l  
+		
 let run (code:insn_block list) : int32 =
   let main = X86.mk_lbl_named "main" in
   let xs = mk_init_state () in
