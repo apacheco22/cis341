@@ -181,7 +181,21 @@ let parse_insn (i: insn) : unit =
 	| _ -> raise (X86_segmentation_fault "invalid insn")
 	end
 		
-let rec interpret (code: insn_block list) (xs: x86_state) (l: lbl) : unit =
+	let rec 
+		interpret (code: insn_block list) (xs: x86_state) (l: lbl) : unit =
+			let index : int  = (find_insn l code) in
+			let program = List.nth code index in				
+					run_block program.insns code xs
+	and
+		run_block (prgm: insn list) (code: insn_block list) (xs: x86_state) : unit =	
+			begin match prgm with
+			| [] -> ();
+			| h::t -> begin match h with
+								| Call op -> print_endline "***CALL***";
+														
+		
+		
+(*let rec interpret (code: insn_block list) (xs: x86_state) (l: lbl) : unit =
 	let rec 
 		get_program (rl: int Stack.t) (rb: int Stack.t) (code: insn_block list) (xs: x86_state) (l:lbl) : unit =		
 			let index : int  = (find_insn l code) in
@@ -212,7 +226,7 @@ let rec interpret (code: insn_block list) (xs: x86_state) (l: lbl) : unit =
 				end 
 		in loop prgm
 	in let rl = Stack.create () in let rb = Stack.create () in
-	get_program rl rb code xs l  
+	get_program rl rb code xs l  *)
 		
 let run (code:insn_block list) : int32 =
   let main = X86.mk_lbl_named "main" in
