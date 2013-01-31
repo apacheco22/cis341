@@ -42,7 +42,7 @@ let cnd_code_test =
 				  (string_of_cnd cc)) (condition_matches st cc)) tru;
       List.iter (fun cc ->
 		   assert_bool (Printf.sprintf "o:%b s:%b f:%b %s !expected" fof fsf fzf
-				  (string_of_cnd cc)) (not (condition_matches st cc))) fls
+				  (string_of_cnd cc)) (not (condition_matches st cc))) fls		
   in
     GradedTest("Condition Codes", 5,
 	       [("ccs0", ccs (false,false,false) [NotEq;NotZero;Sgt;Sge]);
