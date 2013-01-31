@@ -28,6 +28,59 @@ let provided_tests : suite = [
 	  	Sar (eax, Imm 4l);
 			Ret;
 		])] 
-		(fun state -> print32_hex "reg state" state.s_reg.(0); state.s_reg.(0) = 0xff000000l));  
-	])
+		(fun state -> print32_hex "reg state" state.s_reg.(0); print_bool "OF" state.s_OF; state.s_reg.(0) = 0xff000000l));  
+	
+	
+		("shl",
+			st_test "shl" 
+      	[(mk_block "main" [
+	  	Mov (eax, Imm 0x000000ffl);
+	  	Shl (eax, Imm 8l);
+			Ret;
+		])] 
+		(fun state -> print32_hex "reg state" state.s_reg.(0); print_bool "OF" state.s_OF; state.s_reg.(0) = 0x0000ff00l)); 
+		
+		("shl-cond",
+			st_test "shl" 
+      	[(mk_block "main" [
+	  	Mov (eax, Imm 0x80000000l);
+	  	Shl (eax, Imm 1l);
+			Ret;
+		])] 
+		(fun state -> print_bool "OF" state.s_OF; state.s_OF = true));   
+	
+	("shr ",
+			st_test "shr" 
+      	[(mk_block "main" [
+	  	Mov (eax, Imm 0xff00000l);
+	  	Shr (eax, Imm 8l);
+			Ret;
+		])] 
+		(fun state -> print32_hex "reg state" state.s_reg.(0); state.s_reg.(0) = 0xff000l));  
+		
+		
+		("set_b",
+			st_test "set_b" 
+      	[(mk_block "main" [
+	  	Mov (eax, Imm 0xfffdl);
+			Add (eax, Imm 0x1l);
+			Setb (eax, Zero);
+			Ret;
+		])] 
+		(fun state -> print32_hex "reg state" state.s_reg.(0); state.s_reg.(0) = 0xfff0l));  
+	
+	("lea",
+			st_test "lea" 
+      	[(mk_block "main" [
+			Lea (Eax, {i_base = None; i_iscl = None; i_disp = Some (DImm 7l)});
+			Ret;
+		])] 
+		(fun state -> print32_hex "reg state" state.s_reg.(0); state.s_reg.(0) = 0x7l));  
+	
+	
+	
+	]
+	
+	
+	)
 ]

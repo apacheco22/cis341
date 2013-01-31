@@ -14,7 +14,7 @@ let (<=@) a b = (Int32.compare a b) <= 0
 let (>@) a b = (Int32.compare a b) > 0
 let (>=@) a b = (Int32.compare a b) >= 0
 let (<@@) a b = (Int64.compare a b) < 0
-let (%@) a b = (Int32.rem a b) (*Allison's addition*)
+let (%@) a b = (Int32.rem a b) 
 
 
 
@@ -187,6 +187,13 @@ let check_SZ (xs: x86_state) (num: int32) : unit =
 	let msb = get_bit 31 num in
 	xs.s_SF <- msb
 	
+let interpret_dest_no_cc (d: opnd) (s: int32) (xs: x86_state) : unit =
+	begin match d with
+		| Reg r -> xs.s_reg.(reg_of_op(d)) <- s 
+		| Ind i -> xs.s_mem.(map_addr(calc_addr i xs.s_reg xs)) <- s
+		| _ -> raise (X86_segmentation_fault "invalid destination operand")
+	end		
+	
 let interpret_dest (d: opnd) (s: int32) (xs: x86_state) : unit =
 	begin match d with
 		| Reg r -> xs.s_reg.(reg_of_op(d)) <- s; check_SZ xs xs.s_reg.(reg_of_op(d)); 
@@ -213,6 +220,24 @@ let i64_insn (i: insn) (src_val32: int32) (d: opnd) (xs: x86_state) : unit =
 			| _ -> ();
 		 end
 		
+let shift_insn (i: insn) (dest: opnd) (amt: opnd) (xs: x86_state) : unit = 
+	let num_bits = match amt with
+		| Imm i -> parse_operand xs amt
+		| ecx -> parse_operand xs amt
+		in let dest_val = parse_operand xs dest in 
+			let shifted_val = match i with
+				| Sar _ -> 	if num_bits = 1l then xs.s_OF <- false else (); 
+										Int32.shift_right dest_val (Int32.to_int(num_bits)) 
+				| Shl _ ->  if (((get_bit 31 dest_val) <> (get_bit 30 dest_val)) && num_bits = 1l) 
+										then xs.s_OF <- true else (); 
+										Int32.shift_left dest_val (Int32.to_int(num_bits))
+				| Shr _ -> if (num_bits = 1l) then 
+											xs.s_OF <- get_bit 31 dest_val else ();
+										Int32.shift_right_logical dest_val (Int32.to_int(num_bits))
+				| _ -> 0l
+				in interpret_dest dest shifted_val xs;
+				if num_bits <> 0l then check_SZ xs shifted_val else ()
+				
 let parse_insn (i: insn) (xs: x86_state) : unit = 
 	begin match i with
 	| Neg d -> let num = parse_operand xs d in
@@ -229,23 +254,23 @@ let parse_insn (i: insn) (xs: x86_state) : unit =
 	| And (dest, src)-> ();
 	| Or (dest, src) -> ();
 	| Xor (dest, src) -> ();
-	| Sar (dest, amt) -> let num_bits = match amt with
-												| Imm i -> parse_operand xs amt
-												| ecx -> parse_operand xs amt
-												in let dest_val = parse_operand xs dest in 										
-													let shifted_val = Int32.shift_right dest_val (Int32.to_int(num_bits)) in
-														interpret_dest dest shifted_val xs									
-	| Shl (dest, amt) -> ();
-	| Shr (dest, amt) -> ();
-	| Setb (dest, cc) -> ();
-	| Lea (dest, ind) -> ();
+	| Sar (dest, amt) -> shift_insn i dest amt xs															
+	| Shl (dest, amt) -> shift_insn i dest amt xs
+	| Shr (dest, amt) -> shift_insn i dest amt xs
+	| Setb (dest, cc) -> let dest_val = parse_operand xs dest in 
+													if (condition_matches xs cc) then 
+														(interpret_dest_no_cc dest (Int32.logor (Int32.logand dest_val 0xfff0l) 0x0001l) xs)
+														  else (interpret_dest_no_cc dest (Int32.logor (Int32.logand dest_val 0xfff0l) 0x0000l) xs);
+	| Lea (dest, ind) -> let addr = calc_addr ind xs.s_reg xs in
+													xs.s_reg.(get_register_id dest) <- addr
 	| Mov (dest, src) -> 
 					let s = parse_operand xs src in
-					interpret_dest dest s xs;			
-					reset_flags xs
+					interpret_dest_no_cc dest s xs		
 	| Push src -> xs.s_reg.(espi) <- xs.s_reg.(espi) -@ 4l;
 								xs.s_mem.(map_addr(xs.s_reg.(espi))) <- (parse_operand xs src);
-	| Pop dest -> ();
+	| Pop dest -> let popped = xs.s_mem.(map_addr(xs.s_reg.(espi))) in
+									interpret_dest_no_cc dest popped xs;
+									xs.s_reg.(espi) <- xs.s_reg.(espi) +@ 4l;
 	| Cmp (src1, src2) -> ();
 	| Jmp src -> ();
 	| J (cc, clbl) -> ();
@@ -267,8 +292,7 @@ let parse_insn (i: insn) (xs: x86_state) : unit =
 					print32 "Eax" (get_reg_value Eax xs.s_reg);
 					print32 "Ebx" (get_reg_value Ebx xs.s_reg);
 					print32 "s_mem" xs.s_mem.(mem_size-1)*)
-					
-					
+								
 					(*print_endline "Ending flags:";
 					print_bool "OF" xs.s_OF;			
 					print_bool "SF" xs.s_SF;
@@ -278,12 +302,17 @@ let parse_insn (i: insn) (xs: x86_state) : unit =
 		run_block (prgm: insn list) (code: insn_block list) (xs: x86_state) : unit =	
 			begin match prgm with
 			| [] -> ();
-			|	h::[] -> if h = Ret then parse_insn h xs else raise (X86_segmentation_fault "Block ended without return")
 			| (Call op)::tl -> 
 												 let f = label_of_op op in 
 												 parse_insn (Push (Imm 0l)) xs; 
 												 interpret code xs f;
 												 run_block tl code xs;
+			| (Jmp op)::tl -> let f = label_of_op op in
+												interpret code xs f;	
+			| (J (cc,lbl))::tl -> if (condition_matches xs cc) then 
+															interpret code xs lbl else
+																run_block tl code xs;
+			|	h::[] -> if h = Ret then parse_insn h xs else raise (X86_segmentation_fault "Block ended without return")												
 			| h::tl -> parse_insn h xs; run_block tl code xs;
 			end
 			
