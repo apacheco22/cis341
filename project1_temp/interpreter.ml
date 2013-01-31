@@ -250,10 +250,21 @@ let parse_insn (i: insn) (xs: x86_state) : unit =
 											 i64_insn i sval dest xs;
 	| Imul (rg, src) -> let sval = parse_operand xs src in
 											 i64_insn i sval (Reg rg) xs;
-	| Not dest -> ();
-	| And (dest, src)-> ();
-	| Or (dest, src) -> ();
-	| Xor (dest, src) -> ();
+	| Not dest -> 	let num = parse_operand xs dest in
+			let negated = (Int32.lognot num) in
+			interpret_dest dest negated xs;	
+	| And (dest, src)-> 	let num = parse_operand xs dest in
+				let sval = parse_operand xs src in
+				let anded = Int32.logand sval num in
+				interpret_dest dest anded xs; check_SZ xs anded; xs.s_OF <- false;
+	| Or (dest, src) -> 	let num = parse_operand xs dest in
+				let sval = parse_operand xs src in
+				let anded = Int32.logor sval num in
+				interpret_dest dest anded xs; check_SZ xs anded; xs.s_OF <- false;
+	| Xor (dest, src) -> 	let num = parse_operand xs dest in
+				let sval = parse_operand xs src in
+				let anded = Int32.logxor sval num in
+				interpret_dest dest anded xs; check_SZ xs anded; xs.s_OF <- false;
 	| Sar (dest, amt) -> shift_insn i dest amt xs															
 	| Shl (dest, amt) -> shift_insn i dest amt xs
 	| Shr (dest, amt) -> shift_insn i dest amt xs
@@ -271,8 +282,17 @@ let parse_insn (i: insn) (xs: x86_state) : unit =
 	| Pop dest -> let popped = xs.s_mem.(map_addr(xs.s_reg.(espi))) in
 									interpret_dest_no_cc dest popped xs;
 									xs.s_reg.(espi) <- xs.s_reg.(espi) +@ 4l;
-	| Cmp (src1, src2) -> ();
-	| Jmp src -> ();
+	| Cmp (src1, src2) ->
+		
+				let s1val = parse_operand xs src1 in
+				let src1_val = Int64.of_int32(s1val) in				
+				let s2val = parse_operand xs src2 in
+				let src2_val = Int64.of_int32(s2val) in
+				let s = Int64.to_int32(Int64.add src1_val (Int64.neg(src2_val))) in
+								 xs.s_OF <- (check_OF_64 (src1_val, Int64.neg(src2_val)) (s, Int64.neg(src2_val)) 
+															|| (s2val=Int32.min_int));
+						let msb = get_bit 31 s in
+						xs.s_SF <- msb;
 	| J (cc, clbl) -> ();
 	| Ret -> xs.s_reg.(espi) <- (xs.s_reg.(espi) +@ 4l)
 	| _ -> raise (X86_segmentation_fault "invalid insn")
