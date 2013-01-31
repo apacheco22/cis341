@@ -1,1 +1,1 @@
-project1_temp/providedtests.ml: Assert Interpreter
+project1_temp/providedtests.ml: Array Assert Int32 Int64 Interpreter Printf X86

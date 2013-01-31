@@ -205,7 +205,11 @@ let i64_insn (i: insn) (src_val32: int32) (d: opnd) (xs: x86_state) : unit =
 								 interpret_dest d s xs;
 								 xs.s_OF <- (check_OF_64 (dest_val, Int64.neg(src_val)) (s, Int64.neg(src_val)) 
 															|| (src_val32=Int32.min_int));						
-			| Imul _ -> let s = Int64.to_int(Int64.mul dest_val 
+			| Imul _ -> let s64 = (Int64.mul dest_val src_val) in
+									let	s = Int64.to_int32 s64 in
+									interpret_dest d s xs;
+									if (Int64.compare s64 (Int64.of_int32(Int32.max_int))) <= 0 
+										then xs.s_OF <- false else xs.s_OF <- true; 
 			| _ -> ();
 		 end
 		
@@ -220,12 +224,17 @@ let parse_insn (i: insn) (xs: x86_state) : unit =
 	| Sub (dest, src) -> let sval = parse_operand xs src in
 											 i64_insn i sval dest xs;
 	| Imul (rg, src) -> let sval = parse_operand xs src in
-											i64_insn i sval dest xs;
+											 i64_insn i sval (Reg rg) xs;
 	| Not dest -> ();
 	| And (dest, src)-> ();
 	| Or (dest, src) -> ();
 	| Xor (dest, src) -> ();
-	| Sar (dest, amt) -> ();
+	| Sar (dest, amt) -> let num_bits = match amt with
+												| Imm i -> parse_operand xs amt
+												| ecx -> parse_operand xs amt
+												in let dest_val = parse_operand xs dest in 										
+													let shifted_val = Int32.shift_right dest_val (Int32.to_int(num_bits)) in
+														interpret_dest dest shifted_val xs									
 	| Shl (dest, amt) -> ();
 	| Shr (dest, amt) -> ();
 	| Setb (dest, cc) -> ();
